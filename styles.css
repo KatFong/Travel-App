@@ -586,4 +586,56 @@ body {
     .activity-media {
         width: 100%;
     }
+}
+
+.error-technical-details {
+    margin: 10px 0;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+}
+
+.error-popup.show-technical .error-technical-details {
+    display: block;
+}
+
+.copy-error {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.copy-error:hover {
+    background: #e0e0e0;
+}
+
+.error-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 16px;
+}
+
+/* 移動端樣式調整 */
+@media (max-width: 768px) {
+    .error-popup {
+        width: 95%;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .error-technical-details {
+        font-size: 11px;
+        max-height: 150px;
+    }
 } 

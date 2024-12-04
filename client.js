@@ -23,9 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
         chatBox.classList.remove('minimized');
     });
 
-    function showError(message, details) {
+    function showError(message, details, errorObj = null) {
         const overlay = document.getElementById('overlay');
         overlay.classList.add('visible');
+
+        const errorDetails = errorObj ? `
+            錯誤類型: ${errorObj.name || '未知'}
+            錯誤信息: ${errorObj.message || '無'}
+            錯誤堆棧: ${errorObj.stack || '無'}
+            響應狀態: ${errorObj.status || '無'}
+            響應數據: ${JSON.stringify(errorObj.response || {}, null, 2)}
+        ` : details;
 
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-popup';
@@ -33,20 +41,44 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="error-message">
                 <p>${message}</p>
                 <p class="error-details">${details}</p>
+                <pre class="error-technical-details">${errorDetails}</pre>
+                <button class="copy-error">複製錯誤信息</button>
             </div>
-            <button id="retryButton" class="retry-button">重新生成</button>
+            <div class="error-actions">
+                <button id="retryButton" class="retry-button">重新生成</button>
+            </div>
         `;
 
         document.body.appendChild(errorDiv);
 
-        const retryButton = document.getElementById('retryButton');
+        const copyButton = errorDiv.querySelector('.copy-error');
+        copyButton.addEventListener('click', () => {
+            const errorText = `
+錯誤信息：${message}
+詳細信息：${details}
+技術詳情：${errorDetails}
+時間：${new Date().toISOString()}
+用戶代理：${navigator.userAgent}
+            `.trim();
+
+            navigator.clipboard.writeText(errorText).then(() => {
+                copyButton.textContent = '已複製';
+                setTimeout(() => {
+                    copyButton.textContent = '複製錯誤信息';
+                }, 2000);
+            }).catch(err => {
+                console.error('複製失敗:', err);
+                copyButton.textContent = '複製失敗';
+            });
+        });
+
+        const retryButton = errorDiv.querySelector('#retryButton');
         retryButton.addEventListener('click', () => {
             overlay.classList.remove('visible');
             errorDiv.remove();
             handleSearch();
         });
 
-        // 點擊遮罩層關閉錯誤提示
         overlay.addEventListener('click', () => {
             overlay.classList.remove('visible');
             errorDiv.remove();
@@ -275,7 +307,7 @@ ${message}
                     .filter(row => {
                         const cells = row.split('|').map(cell => cell.trim());
                         return row && 
-                               !row.includes('���間 |') && 
+                               !row.includes('間 |') && 
                                cells.some(cell => cell && cell !== '-');
                     });
 
@@ -408,10 +440,24 @@ ${message}
 
         } catch (error) {
             console.error('生成行程錯誤:', error);
-            showError('生成行程時發生錯誤', 
+            const errorDetails = {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                status: error.response?.status,
+                response: error.response?.data,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent
+            };
+
+            console.log('完整錯誤信息:', errorDetails);
+
+            showError(
+                '生成行程時發生錯誤',
                 /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
                     ? '請檢查網絡連接並重試'
-                    : error.message
+                    : error.message,
+                errorDetails
             );
         } finally {
             searchButton.disabled = false;
