@@ -78,15 +78,7 @@ app.use((req, res, next) => {
 });
 
 // Gemini API 端點
-app.all('/api/chat', async (req, res) => {
-    if (req.method !== 'POST') {
-        return res.status(405).json({
-            success: false,
-            error: "方法不允許",
-            allowedMethods: ['POST']
-        });
-    }
-
+app.post('/api/chat', async (req, res) => {
     try {
         if (!req.body.message) {
             console.log('錯誤：空消息');
@@ -96,7 +88,7 @@ app.all('/api/chat', async (req, res) => {
         console.log('收到請求：', {
             messageLength: req.body.message.length,
             messagePreview: req.body.message.substring(0, 100) + '...',
-            userAgent: req.headers['user-agent']  // 記錄用戶代
+            userAgent: req.headers['user-agent']
         });
 
         let retries = 0;
@@ -109,11 +101,7 @@ app.all('/api/chat', async (req, res) => {
                     url: GEMINI_API_URL,
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-goog-api-key': GEMINI_API_KEY,
-                        'User-Agent': req.headers['user-agent'] || 'Unknown Client'
-                    },
-                    params: {
-                        key: GEMINI_API_KEY
+                        'x-goog-api-key': GEMINI_API_KEY
                     },
                     data: {
                         contents: [{
@@ -123,21 +111,18 @@ app.all('/api/chat', async (req, res) => {
                         }],
                         generationConfig: {
                             temperature: 0.7,
-                            maxOutputTokens: 2048,  // 減少 token 數以提高響應速度
+                            maxOutputTokens: 2048,
                             topK: 40,
                             topP: 0.95
                         }
                     },
-                    timeout: 60000,  // 增加超時時間
-                    maxContentLength: 10 * 1024 * 1024,  // 10MB
-                    maxBodyLength: 10 * 1024 * 1024  // 10MB
+                    timeout: 60000
                 });
 
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    const responseText = response.data.candidates[0].content.parts[0].text;
                     return res.json({
                         success: true,
-                        response: responseText
+                        response: response.data.candidates[0].content.parts[0].text
                     });
                 }
 
@@ -147,9 +132,7 @@ app.all('/api/chat', async (req, res) => {
                 console.error('請求錯誤:', {
                     status: error.response?.status,
                     message: error.message,
-                    data: error.response?.data,
-                    stack: error.stack,
-                    userAgent: req.headers['user-agent']
+                    data: error.response?.data
                 });
 
                 if (error.response?.status === 429 && retries < API_CONFIG.maxRetries - 1) {
@@ -158,31 +141,29 @@ app.all('/api/chat', async (req, res) => {
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-
-                // 特殊處理移動端錯誤
-                if (req.headers['user-agent']?.toLowerCase().includes('mobile')) {
-                    throw new Error("移動端請求失敗，請檢查網絡連接並重試");
-                }
                 throw error;
             }
         }
 
     } catch (error) {
-        console.error('處理請求失敗:', {
-            error: error,
-            message: error.message,
-            userAgent: req.headers['user-agent']
-        });
-        
+        console.error('處理請求失敗:', error);
         res.status(error.response?.status || 500).json({
             success: false,
             error: String(error.message || "請求失敗"),
-            details: String(error.response?.data?.error?.message || error.message),
-            timestamp: new Date().toISOString(),
-            retry: true  // 添加重試標誌
+            details: String(error.response?.data?.error?.message || error.message)
         });
     }
 });
+
+// 確保 CORS 配置正確
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept', 'x-goog-api-key']
+}));
+
+// 處理 OPTIONS 請求
+app.options('*', cors());
 
 // 添加 Pixabay API 配置
 const PIXABAY_API_KEY = '41957370-16d60e8e5c0bb0bd5de940968';  // 這是一個示例 key
