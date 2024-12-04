@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
 
         try {
-            const prompt = `基以下現有行程：
+            const prompt = `基下現有行程：
 ${currentItinerary}
 
 用戶要求調整：
@@ -196,11 +196,69 @@ ${message}
         return card;
     }
 
+    async function searchImage(query) {
+        try {
+            // 添加重試邏輯
+            let retries = 0;
+            const maxRetries = 2;
+            const baseDelay = 1000;
+
+            while (retries <= maxRetries) {
+                try {
+                    const response = await fetch('http://localhost:3000/api/image', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            query: query.replace(/[^\w\s\u4e00-\u9fff]/g, '') // 清理查詢字符串
+                        })
+                    });
+                    
+                    // 檢查響應狀態
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    // 嘗試解析 JSON
+                    const text = await response.text();
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('JSON 解析錯誤:', e);
+                        console.log('收到的響應:', text.substring(0, 200));
+                        throw new Error('無效的 JSON 響應');
+                    }
+
+                    if (!data.success) {
+                        throw new Error(data.error || '圖片搜索失敗');
+                    }
+
+                    return data.imageUrl;
+
+                } catch (error) {
+                    console.error(`圖片搜索嘗試 ${retries + 1}/${maxRetries + 1} 失敗:`, error);
+                    
+                    if (retries === maxRetries) {
+                        throw error;
+                    }
+
+                    // 等待後重試
+                    await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, retries)));
+                    retries++;
+                }
+            }
+        } catch (error) {
+            console.error('圖片搜索最終失敗:', error);
+            return null; // 返回 null 而不是拋出錯誤，這樣不會影響整體行程顯示
+        }
+    }
+
     async function displayResult(destination, duration, itinerary) {
         currentItinerary = itinerary;
         const days = itinerary.split(/第\s*\d+\s*天/).filter(Boolean);
         
-        // 星期幾的中文名稱
         const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
         
         for (let i = 0; i < days.length; i++) {
@@ -211,21 +269,18 @@ ${message}
                 card.classList.remove('visible');
                 await new Promise(resolve => setTimeout(resolve, 300));
 
-                // 解析表格內容
                 const rows = dayContent.split('\n')
                     .filter(row => row.includes('|'))
                     .map(row => row.trim())
                     .filter(row => {
-                        // 排除表頭行和空行
                         const cells = row.split('|').map(cell => cell.trim());
                         return row && 
-                               !row.includes('時間 |') && 
+                               !row.includes('���間 |') && 
                                cells.some(cell => cell && cell !== '-');
                     });
 
                 const tableData = rows.map(row => {
                     const [time, activity, transport, cost] = row.split('|').map(cell => {
-                        // 移除開頭的破折號和空白
                         return cell.trim().replace(/^[-\s]+/, '');
                     });
                     
@@ -237,7 +292,6 @@ ${message}
                     };
                 });
 
-                // 獲取當天日期和星期
                 const currentDate = getNextDate(startDateInput.value, i);
                 const weekday = weekdays[new Date(currentDate).getDay()];
 
@@ -250,16 +304,47 @@ ${message}
                             <th>交通方式</th>
                             <th>預估花費</th>
                         </tr>
-                        ${tableData.map(row => `
+                `;
+
+                const rowsWithImages = await Promise.all(
+                    tableData.map(async row => {
+                        let imageHtml = '';
+                        try {
+                            const imageUrl = await searchImage(`${destination} ${row.activity}`);
+                            if (imageUrl) {
+                                imageHtml = `
+                                    <div class="activity-media">
+                                        <img src="${imageUrl}" 
+                                             alt="${row.activity}" 
+                                             class="activity-image"
+                                             onerror="this.style.display='none'"
+                                        />
+                                    </div>
+                                `;
+                            }
+                        } catch (error) {
+                            console.error('圖片載入錯誤:', error);
+                        }
+
+                        return `
                             <tr>
                                 <td>${row.time}</td>
-                                <td>${row.activity}</td>
+                                <td>
+                                    <div class="activity-content">
+                                        <div class="activity-info">
+                                            ${row.activity}
+                                        </div>
+                                        ${imageHtml}
+                                    </div>
+                                </td>
                                 <td>${row.transport}</td>
                                 <td>${row.cost}</td>
                             </tr>
-                        `).join('')}
-                    </table>
-                `;
+                        `;
+                    })
+                );
+
+                newContent += rowsWithImages.join('') + '</table>';
 
                 card.innerHTML = newContent;
                 
@@ -279,8 +364,6 @@ ${message}
         const duration = parseInt(durationInput.value);
         const startDate = startDateInput.value;
 
-        console.log('搜索使用的日期:', startDate);
-
         if (!destination || !duration || !startDate) {
             showError('請填寫所有必要資訊', '請確保已填寫目的地、日期和天數');
             return;
@@ -295,20 +378,41 @@ ${message}
             showResultPage();
 
             const cardsContainer = document.getElementById('itineraryCards');
-            if (!cardsContainer.children.length) {
-                for (let i = 1; i <= duration; i++) {
-                    const card = createDummyCard(i);
-                    cardsContainer.appendChild(card);
-                    await new Promise(resolve => setTimeout(resolve, 150));
+            cardsContainer.innerHTML = ''; // 清空現有內容
+
+            for (let i = 1; i <= duration; i++) {
+                const card = createDummyCard(i);
+                cardsContainer.appendChild(card);
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
+
+            let retries = 0;
+            const maxRetries = 2;
+
+            while (retries <= maxRetries) {
+                try {
+                    const itinerary = await generateItinerary(destination, duration, startDate);
+                    await displayResult(destination, duration, itinerary);
+                    break;
+                } catch (error) {
+                    console.error(`生成嘗試 ${retries + 1}/${maxRetries + 1} 失敗:`, error);
+                    
+                    if (retries === maxRetries) {
+                        throw error;
+                    }
+                    
+                    retries++;
+                    await new Promise(resolve => setTimeout(resolve, 2000 * retries));
                 }
             }
 
-            const itinerary = await generateItinerary(destination, duration, startDate);
-            await displayResult(destination, duration, itinerary);
-
         } catch (error) {
             console.error('生成行程錯誤:', error);
-            showError('生成行程時發生錯誤', error.message);
+            showError('生成行程時發生錯誤', 
+                /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                    ? '請檢查網絡連接並重試'
+                    : error.message
+            );
         } finally {
             searchButton.disabled = false;
             searchButton.textContent = '搜尋行程';

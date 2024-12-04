@@ -544,4 +544,46 @@ body {
 
 .overlay.visible {
     display: block;
+}
+
+/* 行程圖片樣式 */
+.activity-image {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.activity-content {
+    display: flex;
+    gap: 16px;
+}
+
+.activity-info {
+    flex: 1;
+}
+
+.activity-media {
+    width: 160px;
+    flex-shrink: 0;
+}
+
+/* 圖片加載動畫 */
+.image-loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading-wave 1.5s infinite linear;
+    height: 120px;
+    border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+    .activity-content {
+        flex-direction: column;
+    }
+    
+    .activity-media {
+        width: 100%;
+    }
 } 

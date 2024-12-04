@@ -70,7 +70,8 @@ app.post('/api/chat', async (req, res) => {
 
         console.log('收到請求：', {
             messageLength: req.body.message.length,
-            messagePreview: req.body.message.substring(0, 100) + '...'
+            messagePreview: req.body.message.substring(0, 100) + '...',
+            userAgent: req.headers['user-agent']  // 記錄用戶代理
         });
 
         let retries = 0;
@@ -83,7 +84,8 @@ app.post('/api/chat', async (req, res) => {
                     url: GEMINI_API_URL,
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-goog-api-key': GEMINI_API_KEY
+                        'x-goog-api-key': GEMINI_API_KEY,
+                        'User-Agent': req.headers['user-agent'] || 'Unknown Client'
                     },
                     params: {
                         key: GEMINI_API_KEY
@@ -96,31 +98,24 @@ app.post('/api/chat', async (req, res) => {
                         }],
                         generationConfig: {
                             temperature: 0.7,
-                            maxOutputTokens: 4096,
+                            maxOutputTokens: 2048,  // 減少 token 數以提高響應速度
                             topK: 40,
                             topP: 0.95
                         }
                     },
-                    timeout: API_CONFIG.timeout
-                });
-
-                console.log('Gemini API 響應：', {
-                    status: response.status,
-                    hasData: !!response.data,
-                    hasCandidate: !!response.data?.candidates?.[0],
-                    responseLength: response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.length
+                    timeout: 60000,  // 增加超時時間
+                    maxContentLength: 10 * 1024 * 1024,  // 10MB
+                    maxBodyLength: 10 * 1024 * 1024  // 10MB
                 });
 
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     const responseText = response.data.candidates[0].content.parts[0].text;
-                    console.log('成功生成回應，長度：', responseText.length);
                     return res.json({
                         success: true,
                         response: responseText
                     });
                 }
 
-                console.error('API 響應格式無效：', response.data);
                 throw new Error("無效的 API 響應格式");
 
             } catch (error) {
@@ -128,15 +123,20 @@ app.post('/api/chat', async (req, res) => {
                     status: error.response?.status,
                     message: error.message,
                     data: error.response?.data,
-                    stack: error.stack
+                    stack: error.stack,
+                    userAgent: req.headers['user-agent']
                 });
 
                 if (error.response?.status === 429 && retries < API_CONFIG.maxRetries - 1) {
                     retries++;
                     const delay = API_CONFIG.baseDelay * Math.pow(2, retries);
-                    console.log(`配額限制，等待 ${delay/1000} 秒後重試 (${retries}/${API_CONFIG.maxRetries})...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
+                }
+
+                // 特殊處理移動端錯誤
+                if (req.headers['user-agent']?.toLowerCase().includes('mobile')) {
+                    throw new Error("移動端請求失敗，請檢查網絡連接並重試");
                 }
                 throw error;
             }
@@ -146,15 +146,109 @@ app.post('/api/chat', async (req, res) => {
         console.error('處理請求失敗:', {
             error: error,
             message: error.message,
-            stack: error.stack,
-            response: error.response?.data
+            userAgent: req.headers['user-agent']
         });
         
         res.status(error.response?.status || 500).json({
             success: false,
             error: String(error.message || "請求失敗"),
             details: String(error.response?.data?.error?.message || error.message),
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            retry: true  // 添加重試標誌
+        });
+    }
+});
+
+// 添加 Google CSE 配置
+const GOOGLE_CSE_API_KEY = 'AIzaSyAPY3eylTKfkUAJWXmJOMQ7V8-1RiwYTLg';
+const GOOGLE_CSE_ID = 'a69a81004dcce430b';
+
+// 修改圖片搜索 API
+app.post('/api/image', async (req, res) => {
+    try {
+        if (!req.body.query) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "搜索關鍵詞不能為空" 
+            });
+        }
+
+        const query = req.body.query.trim();
+        if (query.length < 2) {
+            return res.status(400).json({
+                success: false,
+                error: "搜索關鍵詞太短"
+            });
+        }
+
+        console.log('搜索圖片:', query);
+
+        try {
+            const response = await axios({
+                method: 'GET',
+                url: 'https://www.googleapis.com/customsearch/v1',  // 修改 API URL
+                params: {
+                    key: GOOGLE_CSE_API_KEY,
+                    cx: GOOGLE_CSE_ID,
+                    q: encodeURIComponent(`${query} landmark photo`),
+                    searchType: 'image',
+                    num: 1,
+                    imgSize: 'large',
+                    safe: 'active',
+                    fields: 'items(link)',  // 只返回需要的字段
+                    alt: 'json'
+                },
+                headers: {
+                    'Accept': 'application/json'
+                },
+                timeout: 10000,
+                validateStatus: function (status) {
+                    return status >= 200 && status < 500; // 接受所有非 500 錯誤的響應
+                }
+            });
+
+            console.log('搜索響應:', {
+                status: response.status,
+                hasItems: !!response.data?.items,
+                query: query,
+                url: response.config.url,
+                params: response.config.params
+            });
+
+            if (response.data?.items?.[0]?.link) {
+                return res.json({
+                    success: true,
+                    imageUrl: response.data.items[0].link
+                });
+            }
+
+            return res.json({
+                success: false,
+                error: "找不到相關圖片"
+            });
+
+        } catch (error) {
+            console.error('Google API 錯誤:', {
+                message: error.message,
+                response: error.response?.data,
+                query: query,
+                status: error.response?.status,
+                query: query
+            });
+            
+            // 返回更詳細的錯誤信息
+            return res.status(500).json({
+                success: false,
+                error: '圖片搜索失敗',
+                details: error.response?.data?.error?.message || error.message
+            });
+        }
+
+    } catch (error) {
+        console.error('圖片搜索處理錯誤:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || '圖片搜索失敗'
         });
     }
 });
