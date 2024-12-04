@@ -8,7 +8,12 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 // 基本配置
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept', 'X-Requested-With']
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
@@ -60,8 +65,28 @@ const limiter = rateLimit({
 // 應用速率限制到 API 路由
 app.use('/api/chat', limiter);
 
+// 在 app.use 配置之後，路由配置之前添加
+app.use((req, res, next) => {
+    // 記錄所有請求
+    console.log('收到請求:', {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body
+    });
+    next();
+});
+
 // Gemini API 端點
-app.post('/api/chat', async (req, res) => {
+app.all('/api/chat', async (req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(405).json({
+            success: false,
+            error: "方法不允許",
+            allowedMethods: ['POST']
+        });
+    }
+
     try {
         if (!req.body.message) {
             console.log('錯誤：空消息');
@@ -71,7 +96,7 @@ app.post('/api/chat', async (req, res) => {
         console.log('收到請求：', {
             messageLength: req.body.message.length,
             messagePreview: req.body.message.substring(0, 100) + '...',
-            userAgent: req.headers['user-agent']  // 記錄用戶代理
+            userAgent: req.headers['user-agent']  // 記錄用戶代
         });
 
         let retries = 0;
@@ -163,10 +188,10 @@ app.post('/api/chat', async (req, res) => {
 const GOOGLE_CSE_API_KEY = 'AIzaSyAPY3eylTKfkUAJWXmJOMQ7V8-1RiwYTLg';
 const GOOGLE_CSE_ID = 'a69a81004dcce430b';
 
-// 修改圖片搜索 API
+// 修改圖片搜索 API 路由
 app.post('/api/image', async (req, res) => {
     try {
-        if (!req.body.query) {
+        if (!req.body?.query) {
             return res.status(400).json({ 
                 success: false, 
                 error: "搜索關鍵詞不能為空" 
@@ -181,93 +206,100 @@ app.post('/api/image', async (req, res) => {
             });
         }
 
-        console.log('搜索圖片:', query);
+        console.log('搜索圖片:', {
+            query: query,
+            userAgent: req.headers['user-agent']
+        });
 
-        try {
-            const response = await axios({
-                method: 'GET',
-                url: 'https://www.googleapis.com/customsearch/v1',  // 修改 API URL
-                params: {
-                    key: GOOGLE_CSE_API_KEY,
-                    cx: GOOGLE_CSE_ID,
-                    q: encodeURIComponent(`${query} landmark photo`),
-                    searchType: 'image',
-                    num: 1,
-                    imgSize: 'large',
-                    safe: 'active',
-                    fields: 'items(link)',  // 只返回需要的字段
-                    alt: 'json'
-                },
-                headers: {
-                    'Accept': 'application/json'
-                },
-                timeout: 10000,
-                validateStatus: function (status) {
-                    return status >= 200 && status < 500; // 接受所有非 500 錯誤的響應
-                }
-            });
+        const response = await axios({
+            method: 'GET',
+            url: 'https://www.googleapis.com/customsearch/v1',
+            params: {
+                key: GOOGLE_CSE_API_KEY,
+                cx: GOOGLE_CSE_ID,
+                q: `${query} tourist attraction site`,
+                searchType: 'image',
+                num: 1,
+                imgSize: 'LARGE',
+                safe: 'active',
+                imgType: 'photo',
+                rights: 'cc_publicdomain cc_attribute',
+                fields: 'items(link,title)',
+            },
+            timeout: 5000
+        });
 
-            console.log('搜索響應:', {
-                status: response.status,
-                hasItems: !!response.data?.items,
-                query: query,
-                url: response.config.url,
-                params: response.config.params
-            });
-
-            if (response.data?.items?.[0]?.link) {
-                return res.json({
-                    success: true,
-                    imageUrl: response.data.items[0].link
-                });
-            }
-
+        if (response.data?.items?.[0]?.link) {
             return res.json({
-                success: false,
-                error: "找不到相關圖片"
-            });
-
-        } catch (error) {
-            console.error('Google API 錯誤:', {
-                message: error.message,
-                response: error.response?.data,
-                query: query,
-                status: error.response?.status,
-                query: query
-            });
-            
-            // 返回更詳細的錯誤信息
-            return res.status(500).json({
-                success: false,
-                error: '圖片搜索失敗',
-                details: error.response?.data?.error?.message || error.message
+                success: true,
+                imageUrl: response.data.items[0].link,
+                title: response.data.items[0].title || ''
             });
         }
 
-    } catch (error) {
-        console.error('圖片搜索處理錯誤:', error);
-        res.status(500).json({
+        return res.json({
             success: false,
-            error: error.message || '圖片搜索失敗'
+            error: "找不到相關圖片"
+        });
+
+    } catch (error) {
+        console.error('圖片搜索錯誤:', {
+            error: error.message,
+            query: req.body?.query,
+            stack: error.stack,
+            status: error.response?.status
+        });
+
+        res.status(error.response?.status || 500).json({
+            success: false,
+            error: '圖片搜索失敗',
+            details: error.response?.data?.error?.message || error.message
         });
     }
 });
 
-// 添加代理狀態 API
+// 修改代理狀態 API 路由
 app.get('/api/proxy-status', (req, res) => {
     try {
         res.json({
+            success: true,
             enabled: !!proxyConfig,
             host: proxyConfig ? `${proxyConfig.host}:${proxyConfig.port}` : null,
             connected: !!httpsAgent,
             lastCheck: new Date().toISOString()
         });
     } catch (error) {
+        console.error('代理狀態檢查錯誤:', error);
         res.status(500).json({
+            success: false,
             enabled: false,
             error: error.message
         });
     }
+});
+
+// 確保 OPTIONS 請求能正確響應
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(200).end();
+});
+
+// 添加錯誤處理中間件
+app.use((err, req, res, next) => {
+    console.error('服務器錯誤:', {
+        error: err,
+        url: req.url,
+        method: req.method,
+        userAgent: req.headers['user-agent']
+    });
+    
+    res.status(500).json({
+        success: false,
+        error: '服務器錯誤',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
 
 // 啟動服務器

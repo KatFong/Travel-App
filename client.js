@@ -300,6 +300,20 @@ ${message}
             : window.location.origin;
 
         try {
+            // 清理和準備搜索關鍵詞
+            const cleanQuery = query
+                .replace(/[^\w\s\u4e00-\u9fff]/g, ' ')
+                .trim()
+                .split(/\s+/)
+                .slice(0, 3)  // 只取前三個詞
+                .join(' ');
+
+            if (cleanQuery.length < 2) {
+                return null;
+            }
+
+            console.log('搜索圖片關鍵詞:', cleanQuery);
+
             const response = await fetch(`${baseUrl}/api/image`, {
                 method: 'POST',
                 headers: {
@@ -307,29 +321,48 @@ ${message}
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({ 
-                    query: query.replace(/[^\w\s\u4e00-\u9fff]/g, ''),
+                    query: cleanQuery,
                     userAgent: navigator.userAgent,
                     platform: navigator.platform
                 }),
-                credentials: 'include',
+                credentials: 'same-origin',  // 改為 same-origin
                 mode: 'cors',
                 cache: 'no-cache'
             });
 
             if (!response.ok) {
-                throw new Error(`圖片搜索失敗: ${response.status}`);
+                const errorText = await response.text();
+                console.error('圖片搜索響應錯誤:', {
+                    status: response.status,
+                    text: errorText
+                });
+                return null;
             }
 
             const data = await response.json();
-            return data.success ? data.imageUrl : null;
+            
+            if (!data.success || !data.imageUrl) {
+                console.log('未找到圖片:', cleanQuery);
+                return null;
+            }
+
+            // 驗證圖片 URL 是否可訪問
+            const imgResponse = await fetch(data.imageUrl, { method: 'HEAD' });
+            if (!imgResponse.ok) {
+                console.error('圖片無法訪問:', data.imageUrl);
+                return null;
+            }
+
+            return data.imageUrl;
 
         } catch (error) {
             console.error('圖片搜索錯誤:', {
                 error: error,
                 query: query,
+                message: error.message,
                 userAgent: navigator.userAgent
             });
-            return null;
+            return null;  // 出錯時返回 null 而不是拋出錯誤
         }
     }
 
@@ -443,7 +476,7 @@ ${message}
         const startDate = startDateInput.value;
 
         if (!destination || !duration || !startDate) {
-            showError('請填寫所有必��資訊', '請確保已填寫目的地、日期和天數');
+            showError('請填寫所有必資訊', '請確保已填寫目的地、日期和天數');
             return;
         }
 
@@ -562,8 +595,34 @@ ${message}
         const proxyConnection = document.getElementById('proxyConnection');
 
         try {
-            const response = await fetch('/api/proxy-status');
-            const data = await response.json();
+            const baseUrl = window.location.hostname === 'localhost' 
+                ? 'http://localhost:3000' 
+                : window.location.origin;
+
+            const response = await fetch(`${baseUrl}/api/proxy-status`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const text = await response.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('JSON 解析錯誤:', e);
+                console.log('收到的響應:', text.substring(0, 200));
+                throw new Error('代理狀態響應格式錯誤');
+            }
 
             if (data.enabled) {
                 proxyStatus.textContent = '已啟用';
@@ -578,14 +637,18 @@ ${message}
                 proxyInfo.classList.remove('visible');
             }
         } catch (error) {
-            console.error('檢查代理狀態失敗:', error);
+            console.error('檢查代理狀態失敗:', {
+                error: error,
+                message: error.message,
+                stack: error.stack
+            });
             proxyStatus.textContent = '檢查失敗';
             proxyStatus.className = 'proxy-value error';
             proxyInfo.classList.remove('visible');
         }
     }
 
-    // 定期檢查代理狀態
+    // 修改檢查頻率
     checkProxyStatus();
-    setInterval(checkProxyStatus, 30000); // 每30秒檢查一次
+    setInterval(checkProxyStatus, 60000); // 每分鐘檢查一次
 });
