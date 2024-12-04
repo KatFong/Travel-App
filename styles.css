@@ -131,16 +131,30 @@ body {
 .result-page {
     max-width: 480px;
     margin: 0 auto;
-    padding: 20px;
     min-height: 100vh;
     background: white;
+    position: relative;
+    padding-top: 120px;
+}
+
+/* 固定頭部容器 */
+.result-header-container {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 480px;
+    background: white;
+    z-index: 100;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .result-header {
     display: flex;
     align-items: center;
-    padding: 16px 0;
-    border-bottom: 1px solid var(--border-color);
+    padding: 16px 20px;
+    background: white;
 }
 
 .result-header h2 {
@@ -149,74 +163,31 @@ body {
     margin-left: 12px;
 }
 
-.calendar-view {
-    padding: 20px 0;
-    display: flex;
-    overflow-x: auto;
-    gap: 8px;
-    scrollbar-width: none;
-}
-
-.calendar-view::-webkit-scrollbar {
-    display: none;
-}
-
-.itinerary-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    padding: 20px 0;
-}
-
-.day-card {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    overflow: hidden;
-}
-
-.day-card .card-header {
-    padding: 16px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.day-card .card-content {
-    padding: 16px;
-}
-
-.activity-item {
-    display: flex;
-    gap: 16px;
-    padding: 12px 0;
-}
-
-.activity-time {
-    font-size: 14px;
-    color: #6B7280;
-    min-width: 60px;
-}
-
-.activity-details {
-    flex: 1;
-}
-
-.activity-image {
-    width: 80px;
-    height: 80px;
-    border-radius: 8px;
-    object-fit: cover;
-}
-
 /* 日曆視圖樣式 */
 .calendar-view {
-    margin: 16px -20px;
-    padding: 0 20px;
+    padding: 12px 20px;
+    width: 100%;
+    background: white;
 }
 
 .calendar-strip {
     display: flex;
-    gap: 12px;
-    padding-bottom: 8px;
+    width: 100%;
+    overflow-x: scroll;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-behavior: smooth;
+}
+
+.calendar-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.calendar-strip-inner {
+    display: flex;
+    gap: 16px;
+    padding: 0 20px;
 }
 
 .calendar-day {
@@ -224,13 +195,159 @@ body {
     flex-direction: column;
     align-items: center;
     min-width: 40px;
+    flex-shrink: 0;
+    position: relative;
 }
 
 .calendar-weekday {
     font-size: 12px;
-    color: #6B7280;
-    margin-bottom: 4px;
+    color: #9CA3AF;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    font-weight: 500;
 }
+
+.calendar-date {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 500;
+    color: #6B7280;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+/* 行程日期的標記 */
+.calendar-date.trip-day {
+    background-color: rgba(255, 56, 92, 0.1);  /* 淺紅色背景 */
+    color: #FF385C;  /* 紅色文字 */
+}
+
+/* 當前選中的日期 */
+.calendar-date.active {
+    background-color: #FF385C;  /* 深紅色背景 */
+    color: white;
+}
+
+/* 移除紅點標記 */
+.calendar-date.trip-day::after {
+    display: none;
+}
+
+/* 移除懸停效果 */
+.calendar-day:hover .calendar-date:not(.active) {
+    background-color: transparent;
+}
+
+/* 移除滾動指示器 */
+.calendar-view::after {
+    display: none;
+}
+
+.itinerary-cards {
+    padding: 20px;
+    position: relative;
+}
+
+.itinerary-cards::before {
+    content: '';
+    position: absolute;
+    left: 95px;
+    top: 40px;
+    bottom: 40px;
+    width: 2px;
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        #E5E7EB 5%,
+        #E5E7EB 95%,
+        transparent 100%
+    );
+}
+
+.activity-card {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    position: relative;
+    margin-left: 20px;
+    transition: none;
+}
+
+.activity-card:hover {
+    transform: none;
+}
+
+.activity-time {
+    min-width: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+}
+
+.activity-time::after {
+    display: none;
+}
+
+.activity-time .date {
+    font-size: 12px;
+    color: #9CA3AF;
+    font-weight: 500;
+}
+
+.activity-time .hour {
+    font-size: 14px;
+    color: #6B7280;
+    font-weight: 600;
+}
+
+.activity-content {
+    flex: 1;
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    margin-left: 20px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.activity-card:hover .activity-content {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-color: transparent;
+}
+
+.activity-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 8px;
+}
+
+.activity-location {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #6B7280;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.activity-cost {
+    font-size: 14px;
+    color: #059669;
+    font-weight: 500;
+}
+
+.activity-card::before {
+    display: none;
+}
+
 /* 響應式設計 */
 @media (max-width: 480px) {
     .search-container,
@@ -249,5 +366,37 @@ body {
     .activity-image {
         width: 60px;
         height: 60px;
+    }
+
+    .result-header {
+        padding: 16px;
+    }
+
+    .calendar-view {
+        padding: 12px 16px;
+    }
+
+    .itinerary-cards {
+        padding: 16px;
+    }
+
+    .itinerary-cards::before {
+        left: 75px;
+    }
+
+    .activity-card::before {
+        left: 65px;
+    }
+
+    .activity-time::after {
+        right: -24px;
+    }
+
+    .activity-time {
+        min-width: 60px;
+    }
+
+    .activity-content {
+        margin-left: 16px;
     }
 } 

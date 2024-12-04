@@ -91,28 +91,48 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
+        const { destination, duration, startDate } = req.body;
+        
         // 構建更結構化的提示
-        const prompt = `Please create a detailed travel itinerary with the following format:
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} starting from ${startDate}.
 
-For each day, provide activities in this structure:
-- Time: Use 24-hour format (e.g., "09:00")
-- Activity: Brief but descriptive activity name and location
-- Transport: Transportation method
-- Cost: Estimated cost in local currency
+Use this exact format for each day:
+Day 1:
+10:00 | Activity and Location | Transport Method | Cost
+12:00 | Activity and Location | Transport Method | Cost
+...
 
-Example format:
-09:00 | Visit Tokyo Tower | Subway | ¥1000
-12:00 | Lunch at Tsukiji Market | Walk | ¥2000
+Day 2:
+09:00 | Activity and Location | Transport Method | Cost
+...
 
 Requirements:
-1. Each day should have 4-6 activities
-2. Include meal times
-3. Consider opening hours
-4. Include realistic travel times
-5. Provide specific locations
-6. Keep costs realistic
+1. Use 24-hour time format (HH:mm)
+2. Include specific locations
+3. Show transport method for each activity
+4. Show estimated cost in EUR
+5. Include meals and rest times
+6. Consider realistic travel times
+7. Use the exact format with | as separator
+8. Create exactly ${duration} days of activities
+9. Each day should start with "Day N:" format
 
-${req.body.message}`;
+Example:
+Day 1:
+09:00 | Breakfast at Hotel Restaurant | Walk | €15
+10:30 | Visit Museum | Metro | €12
+...`;
+
+        // 打印完整提示
+        console.log('\n=== Gemini Prompt ===');
+        console.log(prompt);
+        console.log('\n=== Request Data ===');
+        console.log({
+            destination,
+            duration,
+            startDate,
+            message: req.body.message
+        });
 
         let retries = 0;
         while (retries < API_CONFIG.maxRetries) {
@@ -139,12 +159,20 @@ ${req.body.message}`;
                     }
                 });
 
+                // 打印原始響應
+                console.log('\n=== Gemini Raw Response ===');
+                console.log(JSON.stringify(response.data, null, 2));
+
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    const itinerary = response.data.candidates[0].content.parts[0].text;
-                    const days = itinerary.split(/第\s*\d+\s*天/).filter(Boolean);
+                    const rawText = response.data.candidates[0].content.parts[0].text;
                     
+                    console.log('\n=== Gemini Response Text ===');
+                    console.log(rawText);
+
+                    // 解析響應文本
+                    const days = rawText.split(/Day \d+:/g).filter(Boolean);
                     const formattedDays = days.map((day, index) => {
-                        const activities = day.split('\n')
+                        const activities = day.trim().split('\n')
                             .filter(line => line.includes('|'))
                             .map(line => {
                                 const [time, activity, transport, cost] = line.split('|').map(item => item.trim());
@@ -153,14 +181,12 @@ ${req.body.message}`;
 
                         return {
                             day: index + 1,
-                            activities: activities.filter(activity => 
-                                activity.time && 
-                                activity.activity && 
-                                activity.transport && 
-                                activity.cost
-                            )
+                            activities
                         };
                     });
+
+                    console.log('\n=== Formatted Response ===');
+                    console.log(JSON.stringify(formattedDays, null, 2));
 
                     return res.json({
                         success: true,
@@ -171,7 +197,8 @@ ${req.body.message}`;
                 throw new Error("Invalid API response format");
 
             } catch (error) {
-                console.error('API request error:', error);
+                console.error('\n=== API Error ===');
+                console.error(error);
                 if (retries === API_CONFIG.maxRetries - 1) throw error;
                 retries++;
                 await new Promise(resolve => setTimeout(resolve, API_CONFIG.baseDelay * Math.pow(2, retries)));
@@ -179,7 +206,8 @@ ${req.body.message}`;
         }
 
     } catch (error) {
-        console.error('Request handling error:', error);
+        console.error('\n=== Request Error ===');
+        console.error(error);
         res.status(error.response?.status || 500).json({
             success: false,
             error: error.message || "Failed to generate itinerary"
