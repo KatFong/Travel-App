@@ -184,9 +184,9 @@ app.all('/api/chat', async (req, res) => {
     }
 });
 
-// 添加 Google CSE 配置
-const GOOGLE_CSE_API_KEY = 'AIzaSyAPY3eylTKfkUAJWXmJOMQ7V8-1RiwYTLg';
-const GOOGLE_CSE_ID = 'a69a81004dcce430b';
+// 添加 Pixabay API 配置
+const PIXABAY_API_KEY = '41957370-16d60e8e5c0bb0bd5de940968';  // 這是一個示例 key
+const PIXABAY_API_URL = 'https://pixabay.com/api/';
 
 // 修改圖片搜索 API 路由
 app.post('/api/image', async (req, res) => {
@@ -211,30 +211,80 @@ app.post('/api/image', async (req, res) => {
             userAgent: req.headers['user-agent']
         });
 
-        const response = await axios({
-            method: 'GET',
-            url: 'https://www.googleapis.com/customsearch/v1',
-            params: {
-                key: GOOGLE_CSE_API_KEY,
-                cx: GOOGLE_CSE_ID,
-                q: `${query} tourist attraction site`,
-                searchType: 'image',
-                num: 1,
-                imgSize: 'LARGE',
-                safe: 'active',
-                imgType: 'photo',
-                rights: 'cc_publicdomain cc_attribute',
-                fields: 'items(link,title)',
-            },
-            timeout: 5000
-        });
-
-        if (response.data?.items?.[0]?.link) {
-            return res.json({
-                success: true,
-                imageUrl: response.data.items[0].link,
-                title: response.data.items[0].title || ''
+        // 使用 Google 圖片搜索
+        try {
+            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch`;
+            const response = await axios({
+                method: 'GET',
+                url: searchUrl,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Referer': 'https://www.google.com/'
+                },
+                timeout: 5000
             });
+
+            // 解析 HTML 找到圖片 URL
+            const html = response.data;
+            const imgUrls = html.match(/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|gif))"/g);
+            
+            if (imgUrls && imgUrls.length > 0) {
+                // 清理 URL 並過濾掉無效的
+                const cleanUrls = imgUrls
+                    .map(url => url.slice(2, -1))  // 移除 [" 和 "]
+                    .filter(url => {
+                        try {
+                            new URL(url);
+                            return true;
+                        } catch {
+                            return false;
+                        }
+                    });
+
+                if (cleanUrls.length > 0) {
+                    // 隨機選擇一個 URL
+                    const randomIndex = Math.floor(Math.random() * Math.min(5, cleanUrls.length));
+                    return res.json({
+                        success: true,
+                        imageUrl: cleanUrls[randomIndex],
+                        source: 'google'
+                    });
+                }
+            }
+
+            // 如果沒有找到圖片，返回錯誤
+            return res.json({
+                success: false,
+                error: "找不到相關圖片"
+            });
+
+        } catch (googleError) {
+            console.error('Google 圖片搜索失敗:', googleError.message);
+            
+            // 如果 Google 搜索失敗，使用備用的 Unsplash
+            try {
+                const unsplashResponse = await axios({
+                    method: 'GET',
+                    url: 'https://source.unsplash.com/800x600',
+                    params: {
+                        query: `${query} travel`,
+                    },
+                    maxRedirects: 5,
+                    timeout: 5000
+                });
+
+                if (unsplashResponse.request?.res?.responseUrl) {
+                    return res.json({
+                        success: true,
+                        imageUrl: unsplashResponse.request.res.responseUrl,
+                        source: 'unsplash'
+                    });
+                }
+            } catch (unsplashError) {
+                console.error('Unsplash 備用搜索失敗:', unsplashError.message);
+            }
         }
 
         return res.json({
@@ -246,8 +296,7 @@ app.post('/api/image', async (req, res) => {
         console.error('圖片搜索錯誤:', {
             error: error.message,
             query: req.body?.query,
-            stack: error.stack,
-            status: error.response?.status
+            stack: error.stack
         });
 
         res.status(error.response?.status || 500).json({
