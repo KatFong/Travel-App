@@ -85,21 +85,38 @@ app.use('/api/chat', limiter);
 app.post('/api/chat', async (req, res) => {
     try {
         if (!req.body.message) {
-            console.log('錯誤：空消息');
-            return res.status(400).json({ success: false, error: "訊息不能為空" });
+            return res.status(400).json({ 
+                success: false, 
+                error: "Message cannot be empty" 
+            });
         }
 
-        console.log('收到請求：', {
-            messageLength: req.body.message.length,
-            messagePreview: req.body.message.substring(0, 100) + '...',
-            userAgent: req.headers['user-agent']
-        });
+        // 構建更結構化的提示
+        const prompt = `Please create a detailed travel itinerary with the following format:
+
+For each day, provide activities in this structure:
+- Time: Use 24-hour format (e.g., "09:00")
+- Activity: Brief but descriptive activity name and location
+- Transport: Transportation method
+- Cost: Estimated cost in local currency
+
+Example format:
+09:00 | Visit Tokyo Tower | Subway | ¥1000
+12:00 | Lunch at Tsukiji Market | Walk | ¥2000
+
+Requirements:
+1. Each day should have 4-6 activities
+2. Include meal times
+3. Consider opening hours
+4. Include realistic travel times
+5. Provide specific locations
+6. Keep costs realistic
+
+${req.body.message}`;
 
         let retries = 0;
         while (retries < API_CONFIG.maxRetries) {
             try {
-                console.log(`嘗試請求 Gemini API (嘗試 ${retries + 1}/${API_CONFIG.maxRetries})`);
-                
                 const response = await axiosInstance({
                     method: 'POST',
                     url: GEMINI_API_URL,
@@ -110,7 +127,7 @@ app.post('/api/chat', async (req, res) => {
                     data: {
                         contents: [{
                             parts: [{
-                                text: req.body.message
+                                text: prompt
                             }]
                         }],
                         generationConfig: {
@@ -119,42 +136,53 @@ app.post('/api/chat', async (req, res) => {
                             topK: 40,
                             topP: 0.95
                         }
-                    },
-                    timeout: 60000
+                    }
                 });
 
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    const itinerary = response.data.candidates[0].content.parts[0].text;
+                    const days = itinerary.split(/第\s*\d+\s*天/).filter(Boolean);
+                    
+                    const formattedDays = days.map((day, index) => {
+                        const activities = day.split('\n')
+                            .filter(line => line.includes('|'))
+                            .map(line => {
+                                const [time, activity, transport, cost] = line.split('|').map(item => item.trim());
+                                return { time, activity, transport, cost };
+                            });
+
+                        return {
+                            day: index + 1,
+                            activities: activities.filter(activity => 
+                                activity.time && 
+                                activity.activity && 
+                                activity.transport && 
+                                activity.cost
+                            )
+                        };
+                    });
+
                     return res.json({
                         success: true,
-                        response: response.data.candidates[0].content.parts[0].text
+                        response: formattedDays
                     });
                 }
 
-                throw new Error("無效的 API 響應格式");
+                throw new Error("Invalid API response format");
 
             } catch (error) {
-                console.error('請求錯誤:', {
-                    status: error.response?.status,
-                    message: error.message,
-                    data: error.response?.data
-                });
-
-                if (error.response?.status === 429 && retries < API_CONFIG.maxRetries - 1) {
-                    retries++;
-                    const delay = API_CONFIG.baseDelay * Math.pow(2, retries);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    continue;
-                }
-                throw error;
+                console.error('API request error:', error);
+                if (retries === API_CONFIG.maxRetries - 1) throw error;
+                retries++;
+                await new Promise(resolve => setTimeout(resolve, API_CONFIG.baseDelay * Math.pow(2, retries)));
             }
         }
 
     } catch (error) {
-        console.error('處理請求失敗:', error);
+        console.error('Request handling error:', error);
         res.status(error.response?.status || 500).json({
             success: false,
-            error: String(error.message || "請求失敗"),
-            details: String(error.response?.data?.error?.message || error.message)
+            error: error.message || "Failed to generate itinerary"
         });
     }
 });

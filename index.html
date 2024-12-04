@@ -3,76 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 旅遊行程規劃</title>
+    <title>Travel Itinerary</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="overlay" class="overlay"></div>
+    
+    <!-- 搜索頁面 -->
     <div class="search-container">
-        <div class="hero-section">
-            <h1>AI 旅遊行程規劃</h1>
+        <div class="search-header">
+            <button class="back-button">
+                <svg width="24" height="24" viewBox="0 0 24 24">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h1>Travel Details</h1>
         </div>
-        <div class="search-box">
-            <div class="search-row">
-                <div class="input-group destination-group">
-                    <label for="destination">目的地</label>
-                    <input type="text" id="destination" placeholder="想去哪裡？（例如：東京、巴黎）">
+        
+        <div class="search-form">
+            <div class="form-group">
+                <label for="destination">Destination</label>
+                <div class="input-wrapper">
+                    <input type="text" id="destination" placeholder="Enter destination">
+                    <button class="clear-input" data-input="destination">
+                        <svg width="20" height="20" viewBox="0 0 24 24">
+                            <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
-            <div class="search-row">
-                <div class="input-group">
-                    <label for="startDate">出發日期</label>
-                    <input type="date" id="startDate" min="">
-                </div>
-                <div class="input-group">
-                    <label for="duration">停留天數</label>
-                    <input type="number" id="duration" min="1" max="30" placeholder="輸入天數（1-30天）">
+
+            <div class="form-group">
+                <label for="startDate">Travel Dates</label>
+                <div class="input-wrapper">
+                    <input type="date" id="startDate">
                 </div>
             </div>
-            <button id="searchButton" class="search-button">搜尋行程</button>
+
+            <div class="form-group">
+                <label for="duration">Days of Stay</label>
+                <div class="input-wrapper">
+                    <input type="number" id="duration" min="1" max="30" placeholder="Enter days">
+                    <button class="clear-input" data-input="duration">
+                        <svg width="20" height="20" viewBox="0 0 24 24">
+                            <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <button id="searchButton" class="next-button">Next</button>
         </div>
     </div>
 
+    <!-- 結果頁面 -->
     <div id="resultPage" class="result-page hidden">
         <div class="result-header">
-            <button id="backButton" class="back-button">返回搜尋</button>
-            <h2><span id="destinationDisplay"></span> <span id="durationDisplay"></span>天行程</h2>
+            <button id="backButton" class="back-button">
+                <svg width="24" height="24" viewBox="0 0 24 24">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2>Schedule</h2>
         </div>
+
+        <div class="calendar-view">
+            <div id="calendarStrip" class="calendar-strip">
+                <!-- 日曆將在這裡動態生成 -->
+            </div>
+        </div>
+
         <div id="itineraryCards" class="itinerary-cards">
-            <!-- 行程卡片將在這裡動態添加 -->
-        </div>
-        <div id="chatBox" class="chat-box">
-            <div class="chat-header">
-                <span>調整行程</span>
-                <button id="minimizeChat" class="minimize-button">_</button>
-            </div>
-            <div class="chat-body">
-                <div id="chatMessages" class="chat-messages"></div>
-                <div class="chat-input">
-                    <textarea id="chatInput" placeholder="輸入您想調整的內容..."></textarea>
-                    <button id="sendChat" class="send-button">發送</button>
-                </div>
-            </div>
+            <!-- 行程卡片將在這裡動態生成 -->
         </div>
     </div>
 
-    <footer class="footer">
-        <div class="proxy-status">
-            <span class="proxy-label">代理狀態:</span>
-            <span id="proxyStatus" class="proxy-value">檢查中...</span>
-        </div>
-        <div class="proxy-info hidden">
-            <div class="proxy-detail">
-                <span class="proxy-label">代理伺服器:</span>
-                <span id="proxyHost" class="proxy-value"></span>
-            </div>
-            <div class="proxy-detail">
-                <span class="proxy-label">連接狀態:</span>
-                <span id="proxyConnection" class="proxy-value"></span>
-            </div>
-        </div>
-    </footer>
-
     <script src="client.js"></script>
+
+    <!-- 在 body 結束標籤前添加錯誤提示模板 -->
+    <template id="errorTemplate">
+        <div class="error-popup">
+            <div class="error-content">
+                <svg class="error-icon" width="24" height="24" viewBox="0 0 24 24">
+                    <path fill="#DC2626" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                <h3 class="error-title"></h3>
+                <p class="error-message"></p>
+                <button class="error-button">Try Again</button>
+            </div>
+        </div>
+    </template>
 </body>
 </html> 
