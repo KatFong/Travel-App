@@ -7,13 +7,18 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
-// 基本配置
+// CORS 配置必須在所有路由之前
 app.use(cors({
-    origin: true,
-    credentials: true,
+    origin: '*',  // 允許所有來源
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Accept', 'x-goog-api-key'],
+    credentials: false  // 改為 false，因為我們使用 '*' 作為 origin
 }));
+
+// 處理 OPTIONS 請求
+app.options('*', cors());
+
+// 其他中間件
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
@@ -62,12 +67,8 @@ const limiter = rateLimit({
     }
 });
 
-// 應用速率限制到 API 路由
-app.use('/api/chat', limiter);
-
-// 在 app.use 配置之後，路由配置之前添加
+// 請求日誌中間件
 app.use((req, res, next) => {
-    // 記錄所有請求
     console.log('收到請求:', {
         method: req.method,
         url: req.url,
@@ -76,6 +77,9 @@ app.use((req, res, next) => {
     });
     next();
 });
+
+// 速率限制
+app.use('/api/chat', limiter);
 
 // Gemini API 端點
 app.post('/api/chat', async (req, res) => {
@@ -155,21 +159,7 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 確保 CORS 配置正確
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'x-goog-api-key']
-}));
-
-// 處理 OPTIONS 請求
-app.options('*', cors());
-
-// 添加 Pixabay API 配置
-const PIXABAY_API_KEY = '41957370-16d60e8e5c0bb0bd5de940968';  // 這是一個示例 key
-const PIXABAY_API_URL = 'https://pixabay.com/api/';
-
-// 修改圖片搜索 API 路由
+// 圖片搜索 API 端點
 app.post('/api/image', async (req, res) => {
     try {
         if (!req.body?.query) {
