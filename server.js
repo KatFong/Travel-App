@@ -253,6 +253,23 @@ app.post('/api/image', async (req, res) => {
     }
 });
 
+// 添加代理狀態 API
+app.get('/api/proxy-status', (req, res) => {
+    try {
+        res.json({
+            enabled: !!proxyConfig,
+            host: proxyConfig ? `${proxyConfig.host}:${proxyConfig.port}` : null,
+            connected: !!httpsAgent,
+            lastCheck: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({
+            enabled: false,
+            error: error.message
+        });
+    }
+});
+
 // 啟動服務器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

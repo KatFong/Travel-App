@@ -143,7 +143,11 @@ ${message}
     }
 
     async function generateItinerary(destination, duration, startDate) {
-        console.log('使用的日期:', startDate);
+        const baseUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : window.location.origin;
+
+        // 構建提示文本
         const prompt = `請為以下旅遊需求生成詳細的行程安排：
 目的地：${destination}
 出發日期：${startDate}
@@ -163,19 +167,81 @@ ${message}
 
 請使用24小時制的具體時間，並考慮當地節假日、開放時間等因素。`;
 
-        const response = await fetch('http://localhost:3000/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ message: prompt })
-        });
+        try {
+            console.log('發送請求到:', baseUrl);
+            console.log('請求內容:', prompt);
 
-        const data = await response.json();
-        if (!data.success) {
-            throw new Error(data.error);
+            const response = await fetch(`${baseUrl}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    message: prompt,
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform
+                }),
+                credentials: 'same-origin',  // 修改這裡
+                mode: 'cors',
+                cache: 'no-cache'
+            });
+
+            console.log('收到響應:', {
+                status: response.status,
+                ok: response.ok,
+                statusText: response.statusText
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('響應錯誤:', errorText);
+                throw new Error(`請求失敗: ${response.status} ${response.statusText}`);
+            }
+
+            const text = await response.text();
+            console.log('響應文本:', text.substring(0, 200) + '...');
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('JSON 解析錯誤:', e);
+                console.log('完整響應文本:', text);
+                throw new Error('伺服器響應格式錯誤');
+            }
+
+            if (!data.success) {
+                throw new Error(data.error || '生成失敗');
+            }
+
+            return data.response;
+
+        } catch (error) {
+            console.error('生成行程請求錯誤:', {
+                error: error,
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+                url: baseUrl,
+                userAgent: navigator.userAgent
+            });
+
+            // 改進錯誤信息
+            if (error.message.includes('Failed to fetch')) {
+                throw new Error('無法連接到伺服器，請確保網絡連接正常');
+            } else if (error.message.includes('NetworkError')) {
+                throw new Error('網絡錯誤，請檢查您的網絡連接');
+            } else if (error.message.includes('TypeError')) {
+                throw new Error('請求錯誤，請稍後重試');
+            }
+
+            throw new Error(
+                /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                    ? '網絡連接不穩定，請確保網絡正常並重試'
+                    : `請求失敗: ${error.message}`
+            );
         }
-        return data.response;
     }
 
     function createDummyCard(dayNumber) {
@@ -229,61 +295,41 @@ ${message}
     }
 
     async function searchImage(query) {
+        const baseUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : window.location.origin;
+
         try {
-            // 添加重試邏輯
-            let retries = 0;
-            const maxRetries = 2;
-            const baseDelay = 1000;
+            const response = await fetch(`${baseUrl}/api/image`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    query: query.replace(/[^\w\s\u4e00-\u9fff]/g, ''),
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform
+                }),
+                credentials: 'include',
+                mode: 'cors',
+                cache: 'no-cache'
+            });
 
-            while (retries <= maxRetries) {
-                try {
-                    const response = await fetch('http://localhost:3000/api/image', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ 
-                            query: query.replace(/[^\w\s\u4e00-\u9fff]/g, '') // 清理查詢字符串
-                        })
-                    });
-                    
-                    // 檢查響應狀態
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-
-                    // 嘗試解析 JSON
-                    const text = await response.text();
-                    let data;
-                    try {
-                        data = JSON.parse(text);
-                    } catch (e) {
-                        console.error('JSON 解析錯誤:', e);
-                        console.log('收到的響應:', text.substring(0, 200));
-                        throw new Error('無效的 JSON 響應');
-                    }
-
-                    if (!data.success) {
-                        throw new Error(data.error || '圖片搜索失敗');
-                    }
-
-                    return data.imageUrl;
-
-                } catch (error) {
-                    console.error(`圖片搜索嘗試 ${retries + 1}/${maxRetries + 1} 失敗:`, error);
-                    
-                    if (retries === maxRetries) {
-                        throw error;
-                    }
-
-                    // 等待後重試
-                    await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, retries)));
-                    retries++;
-                }
+            if (!response.ok) {
+                throw new Error(`圖片搜索失敗: ${response.status}`);
             }
+
+            const data = await response.json();
+            return data.success ? data.imageUrl : null;
+
         } catch (error) {
-            console.error('圖片搜索最終失敗:', error);
-            return null; // 返回 null 而不是拋出錯誤，這樣不會影響整體行程顯示
+            console.error('圖片搜索錯誤:', {
+                error: error,
+                query: query,
+                userAgent: navigator.userAgent
+            });
+            return null;
         }
     }
 
@@ -397,7 +443,7 @@ ${message}
         const startDate = startDateInput.value;
 
         if (!destination || !duration || !startDate) {
-            showError('請填寫所有必要資訊', '請確保已填寫目的地、日期和天數');
+            showError('請填寫所有必��資訊', '請確保已填寫目的地、日期和天數');
             return;
         }
 
@@ -508,4 +554,38 @@ ${message}
             return dateString; // 發生錯誤時返回原始字符串
         }
     }
+
+    async function checkProxyStatus() {
+        const proxyStatus = document.getElementById('proxyStatus');
+        const proxyInfo = document.querySelector('.proxy-info');
+        const proxyHost = document.getElementById('proxyHost');
+        const proxyConnection = document.getElementById('proxyConnection');
+
+        try {
+            const response = await fetch('/api/proxy-status');
+            const data = await response.json();
+
+            if (data.enabled) {
+                proxyStatus.textContent = '已啟用';
+                proxyStatus.className = 'proxy-value success';
+                proxyHost.textContent = data.host || '未知';
+                proxyConnection.textContent = data.connected ? '已連接' : '未連接';
+                proxyConnection.className = `proxy-value ${data.connected ? 'success' : 'error'}`;
+                proxyInfo.classList.add('visible');
+            } else {
+                proxyStatus.textContent = '未啟用';
+                proxyStatus.className = 'proxy-value error';
+                proxyInfo.classList.remove('visible');
+            }
+        } catch (error) {
+            console.error('檢查代理狀態失敗:', error);
+            proxyStatus.textContent = '檢查失敗';
+            proxyStatus.className = 'proxy-value error';
+            proxyInfo.classList.remove('visible');
+        }
+    }
+
+    // 定期檢查代理狀態
+    checkProxyStatus();
+    setInterval(checkProxyStatus, 30000); // 每30秒檢查一次
 });
